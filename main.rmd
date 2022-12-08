@@ -1,0 +1,191 @@
+---
+title: "Rapport de l’analyse et de la visualisation des jeux de données D11"
+author: "Marion ROSEC, Evann DREUMONT"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(fig.width = 12, fig.height = 8)
+```
+
+Pour exécuter ce notebook, il faut installer les packages suivants :
+```{r, eval=FALSE}
+install.packages("tidyverse")
+install.packages("sf")
+install.packages("maps")
+install.packages("GGally")
+```
+Nous chargeons le groupe de paquets `tidyverse` afin d'avoir tous les outils nécessaires a l'analyse de données à portée de main, nous chargeons également `knitr` pour que l'output de certaines fonctions soit plus lisible dans le rapport final en html, ainsi que `GGally` qui est une extension de `ggplot2` qui permet de faire des graphiques plus complexes.
+Les paquets "sf" et "maps", étant peu utilisés, nous les appellerons directement en préfixant le nom de la fonction par le nom du paquet (on préfixe par le namespace).
+
+```{r}
+library(knitr)
+library(tidyverse)
+library(GGally)
+```
+
+Nous avons à disposition un jeu de données issu du [NOAA Atlantic hurricane database](https://www.nhc.noaa.gov/data/#hurdat) sur les tempêtes dans l'Atlantique nord. Les positions de 198 tempêtes ont été enregistrées toutes les 6 heures pendant toute leur durée. Pour ce projet, nous allons nous intéresser uniquement à 7 tempêtes qui se sont produites entre juillet et novembre 2014. Pour ce faire, nous avons accès à 11 variables pour 139 observations :
+
+- **name** : le nom de la tempête concernée pour chaque observation
+- **month, day, hour** : la date de l'observation (avec l'heure en UTC)
+- **lat, long** : la localisation de la tempête au moment de l'observation
+- **status** : le type de tempête (dépression tropicale, tempête tropicale, ouragan)
+- **wind** : la vitesse maximale des vents (soutenue sur un temps donné) en nœuds pour chaque observation.
+- **pressure** : la pression maximale pour chaque observation
+- **ts_diameter** : le diamètre de la zone soumise à des vents de tempête tropicale (≥ 34 nœuds)
+- **hu_diameter** : le diamètre de la zone soumise à des vents d'ouragan (≥ 64 nœuds)
+
+À partir de ces données, nous allons essayer de répondre à la problématique suivante :
+
+> Comment les tempêtes évoluent-elles dans le temps et l'espace ?
+
+## Importation des données
+
+Tout d'abord, chargeons les données dans la variable `storms`. Pour cela, nous utilisons un pipeline qui charge le premier csv puis, comme tous les autres csv ont les mêmes variables (colonnes), on ajoute itérativement les lignes des autres fichiers csv à la fin des données précédemment chargées en utilisant la fonction `bind_rows`. Pour charger les fichiers csv, nous utilisons la fonction `read_csv` de la librairie `readr` (ici `read_csv` et non pas `read_csv2` puisque les données sont séparées par des virgules et non des points-virgules).
+
+```{r}
+storms <- read_csv("data/D11_tempetes_month7.csv") %>%
+  bind_rows(read_csv("data/D11_tempetes_month8.csv")) %>%
+  bind_rows(read_csv("data/D11_tempetes_month9.csv")) %>%
+  bind_rows(read_csv("data/D11_tempetes_month10.csv"))
+
+kable(head(storms))
+```
+
+## Préparation des données
+
+Ensuite, dans le but de facilité l'étude, nous préparons nos données en ajustant le type de donnée :
+
+- Nous convertissons la variable `status` en facteur. En effet : cette variable est catégorielle et nous souhaitons classer les différents types de tempêtes en fonction de leur niveau d'intensité.
+- Ensuite, nous convertissons les variables `month`, `day`, `hour` en dates comprises par le langage, car nous souhaitons pouvoir les utiliser pour tracer les courbes d'évolution de la tempête dans le temps. Nous supprimons alors les anciennes colonnes `month`, `day`, `hour`.
+
+```{r}
+storms$status <- factor(storms$status, levels = c("tropical depression", "tropical storm", "hurricane"))
+
+storms <- storms %>%
+  mutate(datetime = as.POSIXct(paste(2014, month, day, hour, sep = "-"), format = "%Y-%m-%d-%H"), month = NULL, day = NULL,) %>% # convert date and time columns to single POSIXct column
+  arrange(datetime) # sort by datetime
+```
+
+Nous initialisons également la variable `world` qui contient les données géographiques du monde, en utilisant la fonction `map` de la librairie `maps` pour les charger. Puis, nous utilisons la fonction `st_as_sf` de la librairie `sf` pour convertir les données en un objet de type `sf` (simple feature) qui est un format de données géographiques utilisable avec `ggplot`.
+
+```{r}
+world <- sf::st_as_sf(maps::map('world', plot = FALSE, fill = TRUE))
+```
+
+Maintenant que nos données sont prêtes, nous les analysons rapidement pour voir s'il nous manque des valeurs ou s'il y a des valeurs aberrantes.
+
+```{r message = FALSE}
+storms %>%
+  group_by(name) %>%
+  select(lat:long, wind:hu_diameter) %>%
+  summarise(across(everything(), list(mean, min, max))) %>%
+  kable()
+```
+
+Au vu des résultats, il n'y a pas de valeurs aberrantes ni de données manquantes. Nous pouvons donc passer à l'étape suivante.
+
+## Visualisation des données
+
+### Impact du vent et de la pression sur la taille des tempêtes
+
+Dans un premier temps, on cherche à savoir si le vent et la pression ne sont pas directement corrélés entre eux. On réalise donc un graphique de dispersion entre ces deux variables.
+
+```{r message = FALSE}
+storms %>%
+  ggplot(aes(x = pressure, y = wind)) +
+  geom_point(aes(color = status)) +
+  geom_smooth(method = lm, se = TRUE) +
+  labs(x = "Pression atmosphérique (hPa)", y = "Vitesse du vent (knots)", title = "Vitesse du vent en fonction de la pression atmosphérique", color = "Type de tempête")
+```
+
+Nous remarquons alors que la pression atmosphérique semble être négativement corrélée avec la vitesse du vent. En effet, plus la pression atmosphérique est élevée, plus la vitesse du vent est faible et inversement.
+
+Ensuite, nous cherchons à savoir si le diamètre de la zone d'influence des vents de tempêtes/ouragans est corrélé avec la vitesse du vent ou bien avec la pression atmosphérique. Pour cela, nous réalisons un graphique de dispersion entre le diamètre pour les vents de tempêtes, le diamètre pour les vents d'ouragans, la vitesse du vent et la pression atmosphérique. A
+fin d'éviter d'avoir trop de figures, nous utilisons le package `GGally` qui permet de réaliser des graphiques de dispersion entre plusieurs variables. Nous utilisons alors la fonction `ggfacet`  qui permet de réaliser automatiquement des graphiques entre plusieurs variables sous forme de grille.
+
+```{r}
+storms %>%
+  ggfacet(
+    c("wind", "pressure"),
+    c("ts_diameter", "hu_diameter"),
+    mapping = aes(color = status),
+    columnLabelsX = c("Vitesse du vent (knots)", "Pression atmosphérique (hPa)"),
+    columnLabelsY = c("Diamètre de la zone soumise à des vents de tempête tropicale", "Diamètre de la zone soumise à des vents d'ouragans"),
+
+  ) +
+  geom_smooth(method = lm, se = TRUE, mapping = aes(color = NULL)) +
+  labs(color = "Type de tempête")
+```
+
+On remarque alors que, tant pour la taille de la zone soumise aux vents de tempête que pour la taille de la zone soumise aux vents cycloniques, le diamètre d'influence semble être moyennement corrélé positivement avec la vitesse du vent. En effet, plus la vitesse du vent est élevée, plus le diamètre est grand. À l'inverse, on remarque que ce diamètre est moyennement corrélé négativement avec la pression atmosphérique. Ainsi, on peut voir que plus la pression atmosphérique est faible, plus les zones d'influence sont grandes.
+
+Afin de valider ces résultats, nous affichons la matrice de corrélation entre ces différentes variables.
+```{r}
+storms %>%
+  select(wind:hu_diameter) %>%
+  ggcorr(label = TRUE, label_round = 3) +
+  labs(title = "Matrice de corrélation entre le vent, la pression, et le diamètre des zones d'influence des vents de tempêtes et d'ouragans")
+```
+
+Nous remarquons alors que comme énoncer précédemment :
+
+- Le vent est fortement inversement corrélé avec la pression atmosphérique ;
+- L'étendue des tempêtes et ouragans est moyennement corrélée avec la vitesse du vent et moyennement négativement corrélée avec la pression atmosphérique.
+
+### Influence du temps sur l'intensité des tempêtes
+
+Nous souhaitons maintenant visualiser l'évolution des tempêtes dans le temps. Pour cela, nous calculons la durée de chaque tempête en heures, ainsi que la vitesse moyenne du vent. Nous affichons ensuite un graphique de dispersion entre la durée des tempêtes et la vitesse moyenne du vent.
+
+```{r}
+storms %>%
+  group_by(name) %>%
+  summarise(duration = as.numeric(last(datetime) - first(datetime), unit = "hours"), mean_wind = mean(wind)) %>%
+  ggplot(aes(x = duration, y = mean_wind)) +
+  geom_point() +
+  labs(x = "Durée (heures)", y = "Vitesse moyenne du vent (knots)", title = "Vitesse moyenne du vent en fonction de la durée")
+
+```
+
+On remarque alors que la durée des tempêtes ne paraît pas du tout corrélée avec la vitesse moyenne du vent. En effet, on observe des tempêtes de courte durée ($\approx 40$ heures) avec une vitesse moyenne du vent moyenne ($\approx 60$ noeuds) et des tempêtes de durée très longue ($\approx 150$ heures) avec une vitesse moyenne du vent identique ($\approx 60$ noeuds).
+
+### Étendue spatiale des tempêtes
+
+Nous voulons à présent représenter l'évolution de la taille des différentes tempêtes en fonction du temps. Pour ce faire nous avons utilisé la fonction `geom_area` pour afficher l'évolution du diamètre des tempêtes (en couleurs) et celui des ouragans (en gris) et ce pour chaque tempête.
+
+```{r}
+storms %>%
+  ggplot(aes(x = datetime, group = name)) +
+  geom_area(aes(y = ts_diameter, fill = name, color = name)) +
+  geom_area(aes(y = hu_diameter)) +
+  labs(x = "Date", y = "Diamètre de la zone soumise à des vents de tempête tropicale et diamètre de la zone soumise à des vents d'ouragans", title = "Évolution de la taille des tempêtes et ouragans dans le temps")
+
+```
+On remarque alors que chaque tempête suit une dynamique similaire. En effet, on remarque tout d'abord une augmentation progressive du diamètre dans le temps jusqu'à un maximum après lequel sa taille chute brutalement pour revenir à 0. Pour les diamètres d'influence des vents cycloniques, l'évolution est identique mais plus brève et l'augmentation du diamètre est moindre. On remarque également que la taille des diamètres pour les vents de tempête est proportionnelle à celle des diamètres de présence de vents cycloniques, ces derniers étant simplement plus petits voir inexistants sur certaines tempêtes (Two qui est restée au stade de dépression tropicale n'en a pas).
+En interprétant ce graphique, on peut tout de même s'interroger sur l'exactitude de notre interprétation puisque nous ne savons pas à partir de quand les données ont cessé d'être relevées. Si l'événement météorologique n'était pas totalement fini, l'absence de données à la fin du phénomène pourrait expliquer les chutes brutales observées sur notre graphique.
+
+
+
+### Evolution de la trajectoire des tempêtes
+
+Avant de faire une conclusion sur les résultats obtenus, nous allons réaliser une dernière visualisation en affichant une carte avec les trajectoires des différentes tempêtes. Pour ce faire, nous utilisons la fonction `geom_sf` de `ggplot2` qui permet de réaliser des graphiques avec des données de type `sf`. Chacun des points de la trajectoire est représenté par un cercle dont la taille est proportionnelle à la vitesse du vent. Nous utilisons également la fonction `geom_segment` qui permet de tracer des segments entre deux points, ici nous utilisons cette fonction pour afficher des flèches qui représentent la direction de l'avancée des tempêtes.
+```{r warning = FALSE}
+storms %>%
+  group_by(name) %>%
+  mutate(xend = lead(long), yend = lead(lat)) %>%
+  ggplot() +
+  geom_sf(data = world) +
+  geom_point(aes(x = long, y = lat, colour = name, size = wind)) +
+  geom_segment(aes(x = long, y = lat, xend = xend, yend = yend, colour = name), arrow = arrow(length = unit(0.35, "cm"), angle = 15)) +
+  coord_sf(xlim = c(min(storms$long), max(storms$long)), ylim = c(min(storms$lat), max(storms$lat)), expand = TRUE) + # reduce dimension of the map and center on the data
+  labs(x = "longitude", y = "latitude", color = "Nom de la tempête", size = "Vitesse des vents (nœuds)", title = "Déplacement géographique des tempêtes au cours du temps")
+```
+
+
+Nous remarquons alors que globalement, les tempêtes suivent la même dynamique, elles semblent suivre le même courant océanique : le Gulf Stream, suivant les côtes américaines en remontant vers le nord. ![Gulf Stream](https://upload.wikimedia.org/wikipedia/commons/9/9b/Corrientes-oceanicas.png)
+
+Cependant, certaines ont des trajectoires un peu différentes comme Hanna qui, malgré un trou dans les données, (on observe une longue ligne droite synonyme d'une absence de données) passe au-dessus du Mexique. Enfin, nous observons que les tempêtes ne font que monter en intensité jusqu'à atteindre un maximum avant de se dissiper.
+
+## Conclusion
+
+En observant l'évolution des tempêtes de l'Océan Atlantique Nord au cours de l'année 2014, nous avons découvert qu'elles sont très variables dans le temps et l'espace et qu'elles dépendent de plusieurs paramètres. Tout d'abord, nous avons pu voir une corrélation entre la force du vent, la pression atmosphérique et la taille de la tempête qui pourrait expliquer les variations d'intensité des tempêtes et ouragans. Ensuite, nous avons pu déterminer un schéma général du changement de taille d'une tempête au cours du temps. Enfin, nous avons défini les trajectoires et l'intensité des tempêtes de 2014 le long de ces trajectoires. Toutes les informations rassemblées sur ces tempêtes passées pourraient nous permettre, via du machine learning ou bien du deep learning, de prédire l'évolution des tempêtes à venir et ainsi prévenir les populations des zones à risques.

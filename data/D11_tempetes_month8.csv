@@ -1,0 +1,24 @@
+name,month,day,hour,lat,long,status,wind,pressure,ts_diameter,hu_diameter
+Cristobal,"8",23,18,21.5,-72.2,tropical depression,30,1005,0,0
+Cristobal,8,24,0,22,-72.5,tropical depression,30,1004,0,0
+Cristobal,8,24,6,22.6,-72.9,tropical storm,35,1002,69.04679999999999,0
+Cristobal,8,24,12,23.3,-73,tropical storm,40,1001,80.5546,0
+Cristobal,8,24,18,24,-73,tropical storm,45,1001,80.5546,0
+Cristobal,8,25,0,24.2,-73,tropical storm,45,998,92.0624,0
+Cristobal,8,25,6,24.4,-72.9,tropical storm,45,996,138.09359999999998,0
+Cristobal,8,25,12,24.7,-72.7,tropical storm,50,993,138.09359999999998,0
+Cristobal,8,25,18,24.9,-72.4,tropical storm,50,992,207.14039999999997,0
+Cristobal,8,26,0,25.1,-72.1,hurricane,65,989,241.66379999999998,46.0312
+Cristobal,8,26,6,25.6,-72,hurricane,65,989,241.66379999999998,46.0312
+Cristobal,8,26,12,26.7,-71.8,hurricane,65,988,241.66379999999998,46.0312
+Cristobal,8,26,18,28.1,-71.4,hurricane,65,987,310.7106,57.538999999999994
+Cristobal,8,27,0,29.5,-71.5,hurricane,70,983,356.74179999999996,69.04679999999999
+Cristobal,8,27,6,30.6,-72,hurricane,70,983,322.2184,69.04679999999999
+Cristobal,8,27,12,31.6,-72.2,hurricane,70,983,322.2184,69.04679999999999
+Cristobal,8,27,18,32.3,-71.8,hurricane,65,984,287.695,80.5546
+Cristobal,8,28,0,33.5,-70.7,hurricane,65,984,287.695,80.5546
+Cristobal,8,28,6,34.8,-69,hurricane,65,982,287.695,80.5546
+Cristobal,8,28,12,36.3,-67.1,hurricane,70,979,287.695,80.5546
+Cristobal,8,28,18,37.5,-63.6,hurricane,75,971,333.72619999999995,80.5546
+Cristobal,8,29,0,39.1,-58.8,hurricane,75,965,460.31199999999995,92.0624
+Cristobal,8,29,6,41.2,-53.9,hurricane,70,967,471.8198,80.5546
